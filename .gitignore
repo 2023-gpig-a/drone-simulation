@@ -75,3 +75,6 @@ crashlytics-build.properties
 
 # Linux temporary files generated on file deletion
 .fuse_hidden*
+
+# Directory used for drone photos
+/[Aa]ssets/[Ss]treamingAssets/[Pp]hotos/
