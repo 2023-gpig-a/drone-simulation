@@ -8,6 +8,9 @@ namespace Drone
     [RequireComponent(typeof(NavMeshAgent))]
     public class SimpleDroneNavigation : MonoBehaviour
     {
+        // Public attributes
+        public int id = 0;
+        
         // Inspector properties
         [Header("Navigation")] 
         [SerializeField] private float flightHeight = 5f;
@@ -26,9 +29,9 @@ namespace Drone
         private Queue<Vector2> _destinations;
         private Vector2 _currentDestination;
         private Vector2 _previousDebugDestination;
-
-        private float _arrivalTime;
-        private bool _takenPhoto = true;
+        
+        private bool _takingPhoto = true;
+        private bool _notNavigating = true;
         private int _numCameraOffCalls;
     
         private void Start()
@@ -58,6 +61,13 @@ namespace Drone
                 _previousDebugDestination = debugDestination;
                 _destinations.Enqueue(debugDestination);
             }
+
+            // Move onto the next destination if idle
+            if (_notNavigating && _destinations.Count > 0)
+            {
+                NextDestination();
+                _notNavigating = false;
+            }
             
             // If the destination is unreachable, skip
             var vec2AgentDestination = new Vector2(_agent.destination.x, _agent.destination.z);
@@ -67,48 +77,32 @@ namespace Drone
         
             // If arrived at destination, take a photo
             var arrived = _agent.remainingDistance <= arrivalThreshold;
-            if (arrived && !_takenPhoto && !unreachable)
+            if (arrived && !_takingPhoto && !unreachable)
             {
                 print($"Path: {_agent.pathStatus}");
-                
-                _cam.enabled = true;
-                _takenPhoto = true;
-                _arrivalTime = Time.time;
-            
-                // Method requires invoking to give the screen time to re-appear
-                Invoke("TakePhoto", stopTime);
+                _takingPhoto = true;
+                DronesManager.Instance.EnqueueScreenshot(id); // TODO: Fix bug where it can take multiple sometimes
             }
+        }
         
-            // When ready, start heading to the next destination
-            if (_destinations.Count > 0 && ((arrived && Time.time - _arrivalTime >= stopTime) || unreachable))
+        private void NextDestination()
+        {
+            // If no destinations queued, idle
+            if (_destinations.Count <= 0)
             {
-                _currentDestination = _destinations.Dequeue();
-                _agent.SetDestination(new Vector3(_currentDestination.x, flightHeight, _currentDestination.y));
-                _takenPhoto = false;
+                _notNavigating = true;
+                return;
             }
+            
+            // Move on to the next target after taking a photo
+            _currentDestination = _destinations.Dequeue();
+            _agent.SetDestination(new Vector3(_currentDestination.x, flightHeight, _currentDestination.y));
+            _takingPhoto = false;
         }
 
-        private void TakePhoto()
+        public void OnScreenshotDone()
         {
-            // Saves current screen to a screenshot
-            var pos = transform.position;
-            var time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var dir = $"{Application.streamingAssetsPath}/Photos";
-            var path = $"{dir}/{pos.x},{pos.z}_{time}.png";
-        
-            System.IO.Directory.CreateDirectory(dir);
-            ScreenCapture.CaptureScreenshot(path);
-            print($"Saved photo to: {path}");
-        
-            // Can take time, so the camera being disabled has to be delayed
-            _numCameraOffCalls++;
-            Invoke("CameraOff", 1f);
-        }
-
-        private void CameraOff()
-        {
-            _numCameraOffCalls--;
-            if (_numCameraOffCalls <= 0) _cam.enabled = false;
+            NextDestination();
         }
     }
 }
