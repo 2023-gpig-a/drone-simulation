@@ -2222,7 +2222,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   dronePrefab: {fileID: 4412466129757121381, guid: 447d8c3f64288afe6a5f1794d541bbc4,
     type: 3}
-  droneCount: 5
+  droneCount: 1
+  screenshotTime: 1
+  URL: 
+  port: 8080
+  useLocalhost: 1
+  heartbeat: 1
+  geoOrigin: {x: 54.285454, y: -0.544649}
+  geoScale: 5
 --- !u!4 &2101001492
 Transform:
   m_ObjectHideFlags: 0

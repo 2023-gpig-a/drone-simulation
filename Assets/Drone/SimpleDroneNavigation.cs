@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.Serialization;
 
 namespace Drone
 {
@@ -9,7 +10,8 @@ namespace Drone
     public class SimpleDroneNavigation : MonoBehaviour
     {
         // Public attributes
-        public int id = 0;
+        public int id;
+        public bool navigating;
         
         // Inspector properties
         [Header("Navigation")] 
@@ -31,7 +33,6 @@ namespace Drone
         private Vector2 _previousDebugDestination;
         
         private bool _takingPhoto = true;
-        private bool _notNavigating = true;
         private int _numCameraOffCalls;
     
         private void Start()
@@ -63,10 +64,10 @@ namespace Drone
             }
 
             // Move onto the next destination if idle
-            if (_notNavigating && _destinations.Count > 0)
+            if (!navigating && _destinations.Count > 0)
             {
                 NextDestination();
-                _notNavigating = false;
+                navigating = true;
             }
             
             // If the destination is unreachable, skip
@@ -81,7 +82,7 @@ namespace Drone
             {
                 print($"Path: {_agent.pathStatus}");
                 _takingPhoto = true;
-                DronesManager.Instance.EnqueueScreenshot(id); // TODO: Fix bug where it can take multiple sometimes
+                SimulationDronesManager.Instance.EnqueueScreenshot(id); // TODO: Fix bug where it can take multiple sometimes
             }
         }
         
@@ -90,7 +91,7 @@ namespace Drone
             // If no destinations queued, idle
             if (_destinations.Count <= 0)
             {
-                _notNavigating = true;
+                navigating = false;
                 return;
             }
             
