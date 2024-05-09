@@ -7,7 +7,7 @@ using UnityEngine.Serialization;
 namespace Drone
 {
     [RequireComponent(typeof(NavMeshAgent))]
-    public class SimpleDroneNavigation : MonoBehaviour
+    public class SimulatedDrone : MonoBehaviour
     {
         // Public attributes
         public int id;
@@ -16,7 +16,7 @@ namespace Drone
         // Inspector properties
         [Header("Navigation")] 
         [SerializeField] private float flightHeight = 5f;
-        [SerializeField] private float arrivalThreshold = 0.1f;
+        [field: SerializeField] public float ArrivalThreshold { get; private set; } = 0.1f;
         [SerializeField] private float stopTime = 1f;
         [SerializeField] private float reachableAllowance = 1f;
     
@@ -70,6 +70,9 @@ namespace Drone
                 navigating = true;
             }
             
+            // Request more destinations if ran out
+            if (_destinations.Count <= 0) SimulatedDronesManager.Instance.RequestNewPathing();
+            
             // If the destination is unreachable, skip
             var vec2AgentDestination = new Vector2(_agent.destination.x, _agent.destination.z);
             var unreachable = (_currentDestination - vec2AgentDestination).magnitude > reachableAllowance;
@@ -77,12 +80,12 @@ namespace Drone
             if (unreachable) print($"Cannot reach destination {_currentDestination}, skipping.");
         
             // If arrived at destination, take a photo
-            var arrived = _agent.remainingDistance <= arrivalThreshold;
+            var arrived = _agent.remainingDistance <= ArrivalThreshold;
             if (arrived && !_takingPhoto && !unreachable)
             {
                 print($"Path: {_agent.pathStatus}");
                 _takingPhoto = true;
-                SimulationDronesManager.Instance.EnqueueScreenshot(id); // TODO: Fix bug where it can take multiple sometimes
+                SimulatedDronesManager.Instance.EnqueueScreenshot(id); // TODO: Fix bug where it can take multiple sometimes
             }
         }
         
@@ -99,6 +102,11 @@ namespace Drone
             _currentDestination = _destinations.Dequeue();
             _agent.SetDestination(new Vector3(_currentDestination.x, flightHeight, _currentDestination.y));
             _takingPhoto = false;
+        }
+
+        public void EnqueueGoal(Vector2 goal)
+        {
+            _destinations.Enqueue(goal);
         }
 
         public void OnScreenshotDone()

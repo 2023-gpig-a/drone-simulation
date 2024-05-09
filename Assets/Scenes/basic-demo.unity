@@ -2224,12 +2224,12 @@ MonoBehaviour:
     type: 3}
   droneCount: 1
   screenshotTime: 1
-  URL: 
+  url: 
   port: 8080
   useLocalhost: 1
   heartbeat: 1
   geoOrigin: {x: 54.285454, y: -0.544649}
-  geoScale: 5
+  geoScale: 100
 --- !u!4 &2101001492
 Transform:
   m_ObjectHideFlags: 0

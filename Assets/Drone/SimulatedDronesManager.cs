@@ -1,51 +1,57 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Text;
+using Newtonsoft.Json;
 using UnityEngine;
-using UnityEngine.Events;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
+using UnityEngine.Serialization;
 
 namespace Drone
 {
-    public class SimulationDronesManager : MonoBehaviour
+    public class SimulatedDronesManager : MonoBehaviour
     {
-        public static SimulationDronesManager Instance { get; private set; }
+        public static SimulatedDronesManager Instance { get; private set; }
 
         // Inspector properties
         [Header("Drones")]
-        [SerializeField] private SimpleDroneNavigation dronePrefab;
+        [SerializeField] private SimulatedDrone dronePrefab;
         [SerializeField] private int droneCount = 1;
         [SerializeField] private float screenshotTime = 1f;
 
+        [FormerlySerializedAs("URL")]
         [Header("API")] 
-        [SerializeField] private string URL = "";
+        [SerializeField] private string url = "";
         [SerializeField] private int port = 8080;
         [SerializeField] private bool useLocalhost;
         [SerializeField] private float heartbeat = 1f;
 
         [Header("Coordinate Space")] 
+        // Both of these will need adjusting for the demo itself
+        // Especially geoScale, as this helps scale down real-world positions to fit the confines of the sim
         [SerializeField] private Vector2 geoOrigin = new Vector2(54.285453f, -0.544649f);
         [SerializeField] private float geoScale = 5f;
         
         // Private attributes
-        private SimpleDroneNavigation[] _drones;
+        private SimulatedDrone[] _drones;
         private Camera[] _droneCameras;
         
         private Queue<int> _screenshotQueue;
-        private int _processingScreenshot = -1;
-        private bool _takenScreenshot;
         
         private float _screenshotTimer;
         private float _heartbeatTimer;
         
+        private int _processingScreenshot = -1;
+        
+        private bool _takenScreenshot;
+        private bool _requestingPathing;
         
         // MAIN EVENT FUNCTIONS
 
         private void Awake()
         {
+            // Enforce singleton
             if (Instance != null && Instance != this)
             {
                 Destroy(gameObject);
@@ -54,12 +60,15 @@ namespace Drone
             Instance = this;
             DontDestroyOnLoad(this);
             SceneManager.sceneLoaded += OnSceneLoaded;
+            
+            // Instantiate properties
             _screenshotQueue = new Queue<int>();
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             SpawnDrones();
+            _requestingPathing = true;
         }
         
         private void Update()
@@ -69,6 +78,10 @@ namespace Drone
             {
                 DroneHeartbeat();
                 _heartbeatTimer = Time.time;
+
+                // GET request for new path
+                // In heartbeat to reduce coroutine calls
+                if (_requestingPathing) StartCoroutine(GetPath());
             }
             
             // Grab a screenshot request to process if free
@@ -87,7 +100,7 @@ namespace Drone
         {
             var spawnPoints = GameObject.FindGameObjectsWithTag("DroneSpawn"); // Must be enough manually placed
             
-            _drones = new SimpleDroneNavigation[droneCount];
+            _drones = new SimulatedDrone[droneCount];
             _droneCameras = new Camera[droneCount];
 
             // Iterate spawning in drones
@@ -96,7 +109,7 @@ namespace Drone
                 var spawnPoint = spawnPoints[i].transform;
                 var drone = Instantiate(dronePrefab.gameObject, spawnPoint.position, spawnPoint.rotation);
                 drone.name = $"Drone {i}";
-                _drones[i] = drone.GetComponent<SimpleDroneNavigation>();
+                _drones[i] = drone.GetComponent<SimulatedDrone>();
                 _drones[i].id = i;
                 _droneCameras[i] = drone.GetComponentInChildren<Camera>();
             }
@@ -121,10 +134,10 @@ namespace Drone
                 // Wait, then take the screenshot
                 case false when Time.time > _screenshotTimer + screenshotTime * .25f:
                 {
-                    var pos = _drones[id].transform.position;
+                    var position = SimToGeoCoords(_drones[id].transform.position);
                     var time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     var dir = $"{Application.streamingAssetsPath}/Photos";
-                    var path = $"{dir}/{pos.x},{pos.z}_{time}.png";
+                    var path = $"{dir}/{position.x},{position.y}_{time}.png";
         
                     System.IO.Directory.CreateDirectory(dir);
                     ScreenCapture.CaptureScreenshot(path);
@@ -141,6 +154,11 @@ namespace Drone
                     _drones[id].OnScreenshotDone();
                     break;
             }
+        }
+
+        public void RequestNewPathing()
+        {
+            _requestingPathing = true;
         }
         
         
@@ -161,13 +179,40 @@ namespace Drone
                 var time = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
                 
                 // Coordinates need to be in lon/lat for the rest of the system
-                var convertedPos = SimToGeoCoords(drone.transform.position);
-                var x = convertedPos.x;
-                var y = convertedPos.y;
+                var convertedPosition = SimToGeoCoords(drone.transform.position);
+                var x = convertedPosition.x;
+                var y = convertedPosition.y;
                 
                 // Convert into JSON and POST it
                 var data = $"{{\"status\": \"{status}\",\"battery\": 1,\"lastUpdate\": \"{time}\",\"lastSeen\": [{x},{y}]}}";
                 StartCoroutine(SendPost(GetUri($"drone_status/{id}"), data));
+            }
+        }
+
+        private IEnumerator GetPath()
+        {
+            // Send GET request
+            var request = UnityWebRequest.Get(GetUri("next_area"));
+            yield return request.SendWebRequest(); 
+            
+            // Validate response
+            if (request.isNetworkError || request.isHttpError)
+            {
+                print(request.error);
+            }
+            else
+            {
+                // Process new goals into list of vectors
+                // Does not use any algorithm for distributing goals, due to the simplicity of the demo,
+                // this would be a feature to add in the future, if further multi-drone simulation was required
+                var processedData = JsonConvert.DeserializeObject<List<List<float>>>(request.downloadHandler.text);
+                print($"Retrieved {processedData.Count} goals from DroneManager.");
+                for (var i = 0; i < processedData.Count; i++)
+                {
+                    var goal = GeoToSimCoords(new Vector2(processedData[i][0], processedData[i][1]));
+                    _drones[i % _drones.Length].EnqueueGoal(goal);
+                }
+                _requestingPathing = false;
             }
         }
         
@@ -176,7 +221,7 @@ namespace Drone
         
         private string GetUri(string path)
         {
-            return useLocalhost ? $"localhost:{port}/{path}" : $"{URL}:{port}/{path}";
+            return useLocalhost ? $"localhost:{port}/{path}" : $"{url}:{port}/{path}";
         }
         
         private static IEnumerator SendPost(string uri, string data)
@@ -203,30 +248,30 @@ namespace Drone
             }
         }
 
-        private Vector2 SimToGeoCoords(Vector2 unityPos)
+        private Vector2 SimToGeoCoords(Vector2 unityPosition)
         {
             // 1 degree is approx 111,111m
             // The cos is to correct for the latitude
             var geoOffset = new Vector2(
-                unityPos.y / 111111f, 
-                unityPos.x / (111111f * Mathf.Cos(Mathf.Deg2Rad * geoOrigin.x)));
+                unityPosition.y / 111111f, 
+                unityPosition.x / (111111f * Mathf.Cos(Mathf.Deg2Rad * geoOrigin.y)));
 
-            return geoOrigin + geoOffset;
+            return geoOrigin + geoOffset * geoScale;
         }
         
         private Vector2 GeoToSimCoords(Vector2 lonLat)
         {
             // Simply an inverse of the SimToGeoCoords function
-            var geoOffset = lonLat - geoOrigin;
+            var geoOffset = (lonLat - geoOrigin) / geoScale;
 
             return new Vector2(
                 geoOffset.y * 111111f,
-                geoOffset.x * (111111f * Mathf.Cos(Mathf.Deg2Rad * geoOrigin.x)));
+                geoOffset.x * (111111f * Mathf.Cos(Mathf.Deg2Rad * geoOrigin.y)));
         }
         
-        private Vector2 SimToGeoCoords(Vector3 unityPos)
+        private Vector2 SimToGeoCoords(Vector3 unityPosition)
         {
-            return SimToGeoCoords(new Vector2(unityPos.x, unityPos.z));
+            return SimToGeoCoords(new Vector2(unityPosition.x, unityPosition.z));
         }
     }
 }
