@@ -3,10 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using Newtonsoft.Json;
+using CompactExifLib;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
-using UnityEngine.Serialization;
 
 namespace Drone
 {
@@ -19,12 +19,12 @@ namespace Drone
         [SerializeField] private SimulatedDrone dronePrefab;
         [SerializeField] private int droneCount = 1;
         [SerializeField] private float screenshotTime = 1f;
-
-        [FormerlySerializedAs("URL")]
+        
         [Header("API")] 
-        [SerializeField] private string url = "";
-        [SerializeField] private int port = 8080;
+        [SerializeField] private string hostURL = "";
         [SerializeField] private bool useLocalhost;
+        [SerializeField] private int droneManagerPort = 8082;
+        [SerializeField] private int dmasPort = 8081;
         [SerializeField] private float heartbeat = 1f;
 
         [Header("Coordinate Space")] 
@@ -46,6 +46,9 @@ namespace Drone
         
         private bool _takenScreenshot;
         private bool _requestingPathing;
+
+        private string _screenshotPath;
+        private DateTime _screenshotTimeTaken;
         
         // MAIN EVENT FUNCTIONS
 
@@ -122,6 +125,8 @@ namespace Drone
 
         private void ProcessScreenshot(int id)
         {
+            var position = SimToGeoCoords(_drones[id].transform.position);
+            
             // Enable camera to start
             if (!_droneCameras[id].enabled)
             {
@@ -132,16 +137,17 @@ namespace Drone
             else switch (_takenScreenshot)
             {
                 // Wait, then take the screenshot
-                case false when Time.time > _screenshotTimer + screenshotTime * .25f:
+                case false when Time.time > _screenshotTimer + screenshotTime * .5f:
                 {
-                    var position = SimToGeoCoords(_drones[id].transform.position);
                     var time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     var dir = $"{Application.streamingAssetsPath}/Photos";
                     var path = $"{dir}/{position.x},{position.y}_{time}.png";
-        
+                    
                     System.IO.Directory.CreateDirectory(dir);
                     ScreenCapture.CaptureScreenshot(path);
                     _takenScreenshot = true;
+                    _screenshotPath = path;
+                    _screenshotTimeTaken = DateTimeOffset.UtcNow.DateTime;
                     print($"Saved photo to: {path}");
                     break;
                 }
@@ -152,6 +158,8 @@ namespace Drone
                     _takenScreenshot = false;
                     _processingScreenshot = -1;
                     _drones[id].OnScreenshotDone();
+                    
+                    StartCoroutine(PostScreenshot(position));
                     break;
             }
         }
@@ -185,20 +193,20 @@ namespace Drone
                 
                 // Convert into JSON and POST it
                 var data = $"{{\"status\": \"{status}\",\"battery\": 1,\"lastUpdate\": \"{time}\",\"lastSeen\": [{x},{y}]}}";
-                StartCoroutine(SendPost(GetUri($"drone_status/{id}"), data));
+                StartCoroutine(SendPost(GetUri($"drone_status/{id}", droneManagerPort), data));
             }
         }
 
         private IEnumerator GetPath()
         {
             // Send GET request
-            var request = UnityWebRequest.Get(GetUri("next_area"));
+            var request = UnityWebRequest.Get(GetUri("next_area", droneManagerPort));
             yield return request.SendWebRequest(); 
             
             // Validate response
             if (request.isNetworkError || request.isHttpError)
             {
-                print(request.error);
+                print($"GET PATH ERROR: {request.error}");
             }
             else
             {
@@ -215,13 +223,37 @@ namespace Drone
                 _requestingPathing = false;
             }
         }
+
+        private IEnumerator PostScreenshot(Vector2 geoPosition)
+        {
+            EmbedImageMetadata(_screenshotPath, geoPosition, _screenshotTimeTaken);
+            
+            // Process image into form-data
+            var imageBytes = System.IO.File.ReadAllBytes(_screenshotPath);
+            var form = new WWWForm();
+            form.AddBinaryData("file", imageBytes);
+
+            // Send POST request
+            var request = UnityWebRequest.Post(GetUri("upload_image", dmasPort), form);
+            yield return request.SendWebRequest();
+            
+            // Validate response
+            if (request.isNetworkError || request.isHttpError)
+            {
+                print($"IMAGE POST ERROR: {request.error}");
+            }
+            else
+            {
+                System.IO.File.Delete(_screenshotPath);
+            }
+        }
         
         
         // API HELPER FUNCTIONS
         
-        private string GetUri(string path)
+        private string GetUri(string path, int port)
         {
-            return useLocalhost ? $"localhost:{port}/{path}" : $"{url}:{port}/{path}";
+            return useLocalhost ? $"localhost:{port}/{path}" : $"{hostURL}:{port}/{path}";
         }
         
         private static IEnumerator SendPost(string uri, string data)
@@ -240,7 +272,7 @@ namespace Drone
             // Log errors/success
             if (request.isNetworkError || request.isHttpError)
             {
-                print(request.error);
+                print($"{uri} ERROR: {request.error}");
             }
             else
             {
@@ -259,19 +291,36 @@ namespace Drone
             return geoOrigin + geoOffset * geoScale;
         }
         
-        private Vector2 GeoToSimCoords(Vector2 lonLat)
+        private Vector2 SimToGeoCoords(Vector3 unityPosition)
+        {
+            return SimToGeoCoords(new Vector2(unityPosition.x, unityPosition.z));
+        }
+        
+        private Vector2 GeoToSimCoords(Vector2 geoPosition)
         {
             // Simply an inverse of the SimToGeoCoords function
-            var geoOffset = (lonLat - geoOrigin) / geoScale;
+            var geoOffset = (geoPosition - geoOrigin) / geoScale;
 
             return new Vector2(
                 geoOffset.y * 111111f,
                 geoOffset.x * (111111f * Mathf.Cos(Mathf.Deg2Rad * geoOrigin.y)));
         }
-        
-        private Vector2 SimToGeoCoords(Vector3 unityPosition)
+
+        private static void EmbedImageMetadata(string filepath, Vector2 geoPosition, DateTime timeTaken)
         {
-            return SimToGeoCoords(new Vector2(unityPosition.x, unityPosition.z));
+            var exifData = new ExifData(filepath);
+            
+            // Convert longitude and latitude
+            var longitude = GeoCoordinate.FromDecimal((decimal)geoPosition.y, false);
+            var latitude = GeoCoordinate.FromDecimal((decimal)geoPosition.x, true);
+            
+            // Embed data and save
+            exifData.SetGpsLongitude(longitude);
+            exifData.SetGpsLatitude(latitude);
+            exifData.SetGpsDateTimeStamp(timeTaken);
+            
+            exifData.Save();
+            print("Embedded metadata");
         }
     }
 }
