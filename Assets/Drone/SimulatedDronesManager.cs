@@ -299,11 +299,11 @@ namespace Drone
         private Vector2 GeoToSimCoords(Vector2 geoPosition)
         {
             // Simply an inverse of the SimToGeoCoords function
-            var geoOffset = (geoPosition - geoOrigin) / geoScale;
+            var geoOffset = (geoPosition - geoOrigin);
 
             return new Vector2(
                 geoOffset.y * 111111f,
-                geoOffset.x * (111111f * Mathf.Cos(Mathf.Deg2Rad * geoOrigin.y)));
+                geoOffset.x * (111111f * Mathf.Cos(Mathf.Deg2Rad * geoOrigin.y))) * geoScale;
         }
 
         private static void EmbedImageMetadata(string filepath, Vector2 geoPosition, DateTime timeTaken)

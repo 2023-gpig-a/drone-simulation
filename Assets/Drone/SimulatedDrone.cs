@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Mapbox.Unity.Utilities;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Serialization;
@@ -76,8 +77,14 @@ namespace Drone
             // If the destination is unreachable, skip
             var vec2AgentDestination = new Vector2(_agent.destination.x, _agent.destination.z);
             var unreachable = (_currentDestination - vec2AgentDestination).magnitude > reachableAllowance;
-            
-            if (unreachable) print($"Cannot reach destination {_currentDestination}, skipping.");
+
+            if (unreachable)
+            {
+                print($"Cannot reach destination {_currentDestination}, skipping.");
+                // We'll never be able to reach it. Set the current destination to our
+                // current position to stop logspam.
+                _currentDestination = transform.position.ToVector2xz();
+            }
         
             // If arrived at destination, take a photo
             var arrived = _agent.remainingDistance <= ArrivalThreshold;
