@@ -32,6 +32,10 @@ namespace Drone
         // Especially geoScale, as this helps scale down real-world positions to fit the confines of the sim
         [SerializeField] private Vector2 geoOrigin = new Vector2(54.285453f, -0.544649f);
         [SerializeField] private float geoScale = 5f;
+
+        [Header("Simulation World")] 
+        [SerializeField] private Transform world;
+        [SerializeField] private float heightOffset;
         
         // Private attributes
         private SimulatedDrone[] _drones;
@@ -72,6 +76,9 @@ namespace Drone
         {
             SpawnDrones();
             _requestingPathing = true;
+            
+            // Lowers the world relative to the baked navmesh, so that the drone is in the sky
+            world.transform.position += Vector3.down * heightOffset;
         }
         
         private void Update()

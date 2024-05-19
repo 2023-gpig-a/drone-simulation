@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Mapbox.Unity.Utilities;
 using UnityEngine;
 using UnityEngine.AI;
@@ -16,10 +15,8 @@ namespace Drone
         
         // Inspector properties
         [Header("Navigation")] 
-        [SerializeField] private float flightHeight = 5f;
+        [SerializeField] private float reachableThreshold = 1f;
         [field: SerializeField] public float ArrivalThreshold { get; private set; } = 0.1f;
-        [SerializeField] private float stopTime = 1f;
-        [SerializeField] private float reachableAllowance = 1f;
     
         [Header("Debug")] 
         [SerializeField] private bool debug;
@@ -76,7 +73,7 @@ namespace Drone
             
             // If the destination is unreachable, skip
             var vec2AgentDestination = new Vector2(_agent.destination.x, _agent.destination.z);
-            var unreachable = (_currentDestination - vec2AgentDestination).magnitude > reachableAllowance;
+            var unreachable = (_currentDestination - vec2AgentDestination).magnitude > reachableThreshold;
 
             if (unreachable)
             {
@@ -107,7 +104,8 @@ namespace Drone
             
             // Move on to the next target after taking a photo
             _currentDestination = _destinations.Dequeue();
-            _agent.SetDestination(new Vector3(_currentDestination.x, flightHeight, _currentDestination.y));
+            _agent.SetDestination(
+                new Vector3(_currentDestination.x, transform.position.x, _currentDestination.y));
             _takingPhoto = false;
         }
 
