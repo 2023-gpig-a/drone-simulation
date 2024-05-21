@@ -1,18 +1,3 @@
-%YAML 1.1
-%TAG !u! tag:unity3d.com,2011:
---- !u!114 &11400000
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_PrefabParentObject: {fileID: 0}
-  m_PrefabInternal: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 232ffe870b9f2df408d25ad59dbfe77c, type: 3}
-  m_Name: ChamferHeightModifier
-  m_EditorClassIdentifier: 
-  Active: 1
-  _flatTops: 1
-  _height: 0
-  _forceHeight: 0
-  _offset: 0.2
+version https://git-lfs.github.com/spec/v1
+oid sha256:5585c10e6ad2a074ff4e8cc4de8f45d1a218c56c41644e8802f8b0c18d62d7a4
+size 447

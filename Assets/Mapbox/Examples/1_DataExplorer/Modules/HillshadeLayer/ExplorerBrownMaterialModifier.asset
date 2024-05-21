@@ -1,20 +1,3 @@
-%YAML 1.1
-%TAG !u! tag:unity3d.com,2011:
---- !u!114 &11400000
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_PrefabParentObject: {fileID: 0}
-  m_PrefabInternal: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 76c93f3debdba4e48adb1b99cad0a0d2, type: 3}
-  m_Name: ExplorerBrownMaterialModifier
-  m_EditorClassIdentifier: 
-  Active: 1
-  _projectMapImagery: 0
-  _materials:
-  - Materials:
-    - {fileID: 2100000, guid: 204bcfc5761ef1b46b9301bc80304e2b, type: 2}
-  - Materials:
-    - {fileID: 2100000, guid: 204bcfc5761ef1b46b9301bc80304e2b, type: 2}
+version https://git-lfs.github.com/spec/v1
+oid sha256:1fe4b6a465e6c34438c2b71bbe0925ef222bea6b2165c2f1b37111047b716418
+size 608
